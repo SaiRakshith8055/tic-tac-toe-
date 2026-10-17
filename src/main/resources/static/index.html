@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic-Tac-Toe | 2-Player Game</title>
+    <meta name="description" content="A stylish, modern 2-player Tic-Tac-Toe web application powered by Java Spring Boot REST API.">
+    <!-- Google Fonts for modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background dynamic ambient glow circles -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <main class="app-container">
+        <!-- Header Section -->
+        <header class="header">
+            <div class="brand-badge">
+                <span class="badge-dot"></span>
+                <span>Java Spring Boot + REST API</span>
+            </div>
+            <h1 class="main-title">TIC-TAC-TOE</h1>
+            <p class="subtitle">Two Players. One Winner.</p>
+        </header>
+
+        <!-- Scoreboard Section -->
+        <section class="scoreboard" aria-label="Game Scores">
+            <div class="score-card player-x-card" id="cardPlayerX">
+                <div class="player-avatar x-avatar">X</div>
+                <div class="player-info">
+                    <span class="player-name">Player X</span>
+                    <span class="score-value" id="scoreX">0</span>
+                </div>
+            </div>
+
+            <div class="score-card draws-card" id="cardDraws">
+                <div class="player-avatar draw-avatar">VS</div>
+                <div class="player-info">
+                    <span class="player-name">Draws</span>
+                    <span class="score-value" id="scoreDraws">0</span>
+                </div>
+            </div>
+
+            <div class="score-card player-o-card" id="cardPlayerO">
+                <div class="player-avatar o-avatar">O</div>
+                <div class="player-info">
+                    <span class="player-name">Player O</span>
+                    <span class="score-value" id="scoreO">0</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Status & Turn Banner -->
+        <section class="status-section">
+            <div class="turn-indicator" id="turnIndicator">
+                <span class="turn-pulse" id="turnPulse"></span>
+                <span class="turn-text" id="statusMessage">Player X's Turn</span>
+            </div>
+        </section>
+
+        <!-- Notification / Error Banner -->
+        <div class="notification-banner" id="notificationBanner" role="alert" aria-live="polite">
+            <span class="notification-icon">⚠️</span>
+            <span class="notification-text" id="notificationText"></span>
+        </div>
+
+        <!-- 3x3 Game Board -->
+        <section class="board-wrapper">
+            <div class="game-board" id="gameBoard" role="grid" aria-label="Tic Tac Toe Board">
+                <button type="button" class="cell" id="cell-0-0" data-row="0" data-col="0" aria-label="Row 1, Column 1"></button>
+                <button type="button" class="cell" id="cell-0-1" data-row="0" data-col="1" aria-label="Row 1, Column 2"></button>
+                <button type="button" class="cell" id="cell-0-2" data-row="0" data-col="2" aria-label="Row 1, Column 3"></button>
+
+                <button type="button" class="cell" id="cell-1-0" data-row="1" data-col="0" aria-label="Row 2, Column 1"></button>
+                <button type="button" class="cell" id="cell-1-1" data-row="1" data-col="1" aria-label="Row 2, Column 2"></button>
+                <button type="button" class="cell" id="cell-1-2" data-row="1" data-col="2" aria-label="Row 2, Column 3"></button>
+
+                <button type="button" class="cell" id="cell-2-0" data-row="2" data-col="0" aria-label="Row 3, Column 1"></button>
+                <button type="button" class="cell" id="cell-2-1" data-row="2" data-col="1" aria-label="Row 3, Column 2"></button>
+                <button type="button" class="cell" id="cell-2-2" data-row="2" data-col="2" aria-label="Row 3, Column 3"></button>
+            </div>
+        </section>
+
+        <!-- Game Controls -->
+        <footer class="controls">
+            <button type="button" class="btn btn-primary" id="btnNewGame">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+                <span>New Game</span>
+            </button>
+            <button type="button" class="btn btn-secondary" id="btnResetGame">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                    <path d="M3 3v5h5"/>
+                </svg>
+                <span>Reset Game</span>
+            </button>
+            <button type="button" class="btn btn-icon-only" id="btnSoundToggle" title="Toggle Sound Effects" aria-label="Toggle Sound Effects">
+                <span id="soundIcon">🔊</span>
+            </button>
+        </footer>
+
+        <!-- College / Developer Tag -->
+        <aside class="project-tag">
+            <span class="project-tag-pill">College Mini-Project Demonstration</span>
+            <span class="project-tag-sub">Spring Boot Backend • REST API JSON • Vanilla Frontend</span>
+        </aside>
+    </main>
+
+    <!-- Confetti Canvas for Victory Celebrations -->
+    <canvas id="confettiCanvas"></canvas>
+
+    <script src="script.js"></script>
+</body>
+</html>
