@@ -1,7 +1,7 @@
 /**
  * TIC-TAC-TOE CLIENT SCRIPT
- * Communicates with Java Spring Boot REST API.
- * The Java backend is the single source of truth for all game rules and states.
+ * Communicates with Java Spring Boot REST API when running on backend server,
+ * with automatic seamless offline/static fallback for deployments like Vercel.
  */
 
 // API Base Endpoints
@@ -30,11 +30,130 @@ const notificationBanner = document.getElementById('notificationBanner');
 const notificationText = document.getElementById('notificationText');
 const confettiCanvas = document.getElementById('confettiCanvas');
 
-// Local State Cached from Backend
+// Local State & Mode
 let currentGameState = null;
 let soundEnabled = true;
 let isProcessing = false;
 let notificationTimeout = null;
+let useBackendApi = true;
+
+// ==========================================================================
+// Fallback In-Memory Engine (Ensures Game Works on Static Hosts like Vercel)
+// ==========================================================================
+const LocalGameEngine = {
+    board: [["", "", ""], ["", "", ""], ["", "", ""]],
+    currentPlayer: "X",
+    status: "IN_PROGRESS",
+    winner: null,
+    scoreX: 0,
+    scoreO: 0,
+    draws: 0,
+    winningLine: null,
+    message: "Player X's Turn",
+
+    getState() {
+        return {
+            board: this.board.map(r => [...r]),
+            currentPlayer: this.currentPlayer,
+            status: this.status,
+            winner: this.winner,
+            scoreX: this.scoreX,
+            scoreO: this.scoreO,
+            draws: this.draws,
+            winningLine: this.winningLine ? this.winningLine.map(c => [...c]) : null,
+            message: this.message
+        };
+    },
+
+    makeMove(row, col) {
+        if (row < 0 || row > 2 || col < 0 || col > 2) {
+            throw new Error("Invalid move coordinates.");
+        }
+        if (this.status !== "IN_PROGRESS") {
+            throw new Error("Game is over. Start a new round!");
+        }
+        if (this.board[row][col] !== "") {
+            throw new Error(`Cell (${row}, ${col}) is already occupied.`);
+        }
+
+        this.board[row][col] = this.currentPlayer;
+
+        // Check winning lines
+        const win = this.checkWin(this.currentPlayer);
+        if (win) {
+            this.winningLine = win;
+            this.winner = this.currentPlayer;
+            if (this.currentPlayer === "X") {
+                this.status = "X_WON";
+                this.scoreX++;
+            } else {
+                this.status = "O_WON";
+                this.scoreO++;
+            }
+            this.message = `Player ${this.winner} Wins!`;
+            return this.getState();
+        }
+
+        // Check draw
+        if (this.isFull()) {
+            this.status = "DRAW";
+            this.winner = null;
+            this.winningLine = null;
+            this.draws++;
+            this.message = "It's a Draw!";
+            return this.getState();
+        }
+
+        // Switch turn
+        this.currentPlayer = this.currentPlayer === "X" ? "O" : "X";
+        this.message = `Player ${this.currentPlayer}'s Turn`;
+        return this.getState();
+    },
+
+    startNewRound() {
+        this.board = [["", "", ""], ["", "", ""], ["", "", ""]];
+        this.currentPlayer = "X";
+        this.status = "IN_PROGRESS";
+        this.winner = null;
+        this.winningLine = null;
+        this.message = "Player X's Turn";
+        return this.getState();
+    },
+
+    resetAll() {
+        this.scoreX = 0;
+        this.scoreO = 0;
+        this.draws = 0;
+        return this.startNewRound();
+    },
+
+    isFull() {
+        return this.board.every(row => row.every(cell => cell !== ""));
+    },
+
+    checkWin(symbol) {
+        // Rows
+        for (let r = 0; r < 3; r++) {
+            if (this.board[r][0] === symbol && this.board[r][1] === symbol && this.board[r][2] === symbol) {
+                return [[r, 0], [r, 1], [r, 2]];
+            }
+        }
+        // Cols
+        for (let c = 0; c < 3; c++) {
+            if (this.board[0][c] === symbol && this.board[1][c] === symbol && this.board[2][c] === symbol) {
+                return [[0, c], [1, c], [2, c]];
+            }
+        }
+        // Diagonals
+        if (this.board[0][0] === symbol && this.board[1][1] === symbol && this.board[2][2] === symbol) {
+            return [[0, 0], [1, 1], [2, 2]];
+        }
+        if (this.board[0][2] === symbol && this.board[1][1] === symbol && this.board[2][0] === symbol) {
+            return [[0, 2], [1, 1], [2, 0]];
+        }
+        return null;
+    }
+};
 
 // ==========================================================================
 // Web Audio Synthesizer (Zero External Dependencies)
@@ -158,8 +277,8 @@ const Confetti = {
 
             p.x += p.vx;
             p.y += p.vy;
-            p.vy += 0.35; // Gravity
-            p.vx *= 0.98; // Friction
+            p.vy += 0.35;
+            p.vx *= 0.98;
             p.rotation += p.rotationSpeed;
             p.alpha -= p.decay;
 
@@ -181,27 +300,31 @@ const Confetti = {
 };
 
 // ==========================================================================
-// REST API Communication Handlers
+// REST API Communication Handlers with Automatic Fallback
 // ==========================================================================
 
 /**
- * Fetch current state of the game from Java backend.
+ * Fetch current state of the game.
  */
 async function fetchGameState() {
     try {
         const response = await fetch(API.STATE);
-        if (!response.ok) {
-            throw new Error(`Failed to load game state (HTTP ${response.status})`);
+        if (response.ok) {
+            useBackendApi = true;
+            const state = await response.json();
+            updateUI(state);
+            return;
         }
-        const state = await response.json();
-        updateUI(state);
-    } catch (error) {
-        showNotification(error.message || 'Error connecting to Java backend.');
+    } catch (e) {
+        // Backend not reachable, switch to fallback
     }
+
+    useBackendApi = false;
+    updateUI(LocalGameEngine.getState());
 }
 
 /**
- * Make a move on the board by sending row and col to Java REST API.
+ * Handle cell click.
  */
 async function handleCellClick(event) {
     if (isProcessing) return;
@@ -210,7 +333,6 @@ async function handleCellClick(event) {
     const row = parseInt(cell.getAttribute('data-row'), 10);
     const col = parseInt(cell.getAttribute('data-col'), 10);
 
-    // Frontend pre-check: prevent clicking already filled cell or finished game
     if (cell.classList.contains('cell-x') || cell.classList.contains('cell-o')) {
         showNotification('This cell is already occupied!');
         AudioController.playError();
@@ -226,43 +348,58 @@ async function handleCellClick(event) {
     isProcessing = true;
     hideNotification();
 
-    try {
-        const response = await fetch(API.MOVE, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ row, col })
-        });
+    if (useBackendApi) {
+        try {
+            const response = await fetch(API.MOVE, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({ row, col })
+            });
 
-        const data = await response.json();
+            const data = await response.json();
 
-        if (!response.ok) {
-            // Handle HTTP 400 or 409 from Java GlobalExceptionHandler
-            const errorMsg = data.message || `Move rejected (HTTP ${response.status})`;
-            showNotification(errorMsg);
-            AudioController.playError();
+            if (!response.ok) {
+                const errorMsg = data.message || `Move rejected (HTTP ${response.status})`;
+                showNotification(errorMsg);
+                AudioController.playError();
+                return;
+            }
+
+            processMoveSuccess(data);
             return;
+        } catch (error) {
+            // If backend failed mid-game, switch seamlessly to local engine
+            useBackendApi = false;
+        } finally {
+            isProcessing = false;
         }
+    }
 
-        // Successfully updated from backend
-        const lastPlayer = currentGameState ? currentGameState.currentPlayer : 'X';
-        AudioController.playMove(lastPlayer);
-        updateUI(data);
-
-        // Sound & celebratory effects on state transitions
-        if (data.status === 'X_WON' || data.status === 'O_WON') {
-            AudioController.playWin();
-            Confetti.celebrate();
-        } else if (data.status === 'DRAW') {
-            AudioController.playDraw();
-        }
-    } catch (error) {
-        showNotification('Network error: Unable to reach Java backend server.');
+    // Local engine fallback (e.g. static hosting on Vercel)
+    try {
+        const data = LocalGameEngine.makeMove(row, col);
+        processMoveSuccess(data);
+    } catch (err) {
+        showNotification(err.message);
         AudioController.playError();
     } finally {
         isProcessing = false;
+    }
+}
+
+function processMoveSuccess(data) {
+    const lastPlayer = currentGameState ? currentGameState.currentPlayer : 'X';
+    AudioController.playMove(lastPlayer);
+    updateUI(data);
+
+    if (data.status === 'X_WON' || data.status === 'O_WON') {
+        AudioController.playWin();
+        Confetti.celebrate();
+    } else if (data.status === 'DRAW') {
+        AudioController.playDraw();
     }
 }
 
@@ -274,21 +411,25 @@ async function startNewGame() {
     isProcessing = true;
     hideNotification();
 
-    try {
-        const response = await fetch(API.NEW_ROUND, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to start new round (HTTP ${response.status})`);
+    if (useBackendApi) {
+        try {
+            const response = await fetch(API.NEW_ROUND, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' }
+            });
+            if (response.ok) {
+                const state = await response.json();
+                updateUI(state);
+                isProcessing = false;
+                return;
+            }
+        } catch (e) {
+            useBackendApi = false;
         }
-        const state = await response.json();
-        updateUI(state);
-    } catch (error) {
-        showNotification(error.message || 'Error starting new game.');
-    } finally {
-        isProcessing = false;
     }
+
+    updateUI(LocalGameEngine.startNewRound());
+    isProcessing = false;
 }
 
 /**
@@ -299,31 +440,31 @@ async function resetEntireGame() {
     isProcessing = true;
     hideNotification();
 
-    try {
-        const response = await fetch(`${API.RESET}?resetScores=true`, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json' }
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to reset game (HTTP ${response.status})`);
+    if (useBackendApi) {
+        try {
+            const response = await fetch(`${API.RESET}?resetScores=true`, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' }
+            });
+            if (response.ok) {
+                const state = await response.json();
+                updateUI(state);
+                isProcessing = false;
+                return;
+            }
+        } catch (e) {
+            useBackendApi = false;
         }
-        const state = await response.json();
-        updateUI(state);
-    } catch (error) {
-        showNotification(error.message || 'Error resetting game.');
-    } finally {
-        isProcessing = false;
     }
+
+    updateUI(LocalGameEngine.resetAll());
+    isProcessing = false;
 }
 
 // ==========================================================================
 // UI Rendering Functions
 // ==========================================================================
 
-/**
- * Synchronizes the entire HTML DOM with the GameState returned from Java.
- * @param {Object} state GameState JSON object
- */
 function updateUI(state) {
     currentGameState = state;
 
@@ -348,9 +489,7 @@ function updateUI(state) {
     statusMessage.textContent = state.message;
     turnIndicator.className = 'turn-indicator';
 
-    if (state.status === 'X_WON') {
-        turnIndicator.classList.add('turn-win');
-    } else if (state.status === 'O_WON') {
+    if (state.status === 'X_WON' || state.status === 'O_WON') {
         turnIndicator.classList.add('turn-win');
     } else if (state.status === 'DRAW') {
         turnIndicator.classList.add('turn-draw');
@@ -372,7 +511,6 @@ function updateUI(state) {
         const symbol = state.board[row][col];
         const coordKey = `${row}-${col}`;
 
-        // Reset cell styling
         cell.className = 'cell';
         cell.textContent = symbol || '';
 
@@ -382,12 +520,10 @@ function updateUI(state) {
             cell.classList.add('cell-o');
         }
 
-        // Winning cell highlight
         if (winningSet.has(coordKey)) {
             cell.classList.add('cell-win');
         }
 
-        // Disable button if game ended or occupied
         if (state.status !== 'IN_PROGRESS' || symbol !== '') {
             cell.disabled = true;
         } else {
@@ -396,9 +532,6 @@ function updateUI(state) {
     });
 }
 
-/**
- * Display error banner with automated fadeout.
- */
 function showNotification(msg) {
     if (notificationTimeout) clearTimeout(notificationTimeout);
     notificationText.textContent = msg;
@@ -410,9 +543,6 @@ function hideNotification() {
     notificationBanner.classList.remove('show');
 }
 
-/**
- * Toggle sound effects.
- */
 function toggleSound() {
     soundEnabled = !soundEnabled;
     soundIcon.textContent = soundEnabled ? '🔊' : '🔇';
@@ -423,16 +553,13 @@ function toggleSound() {
 // Event Listeners & Initialization
 // ==========================================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Attach click listener to each cell
     cells.forEach(cell => {
         cell.addEventListener('click', handleCellClick);
     });
 
-    // Control buttons
     btnNewGame.addEventListener('click', startNewGame);
     btnResetGame.addEventListener('click', resetEntireGame);
     btnSoundToggle.addEventListener('click', toggleSound);
 
-    // Initial load from backend
     fetchGameState();
 });
